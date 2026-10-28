@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Compra de tablas</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<main class="wrap">
+  <h1 id="titulo">Compra de tablas</h1>
+  <p class="muted" id="precio"></p>
+
+  <form id="form" class="card" hidden>
+    <h2>Tus datos</h2>
+    <div class="grid">
+      <label>Nombre completo <input name="nombre" required maxlength="120"></label>
+      <label>Cédula <input name="cedula" required inputmode="numeric" maxlength="20"></label>
+      <label>WhatsApp <input name="telefono" required inputmode="tel" placeholder="04121234567" maxlength="20"></label>
+      <label>Correo <input name="correo" type="email" required maxlength="120"></label>
+      <label>Cantidad de tablas <input name="cantidad" type="number" min="1" max="50" value="1" required></label>
+      <label>Método de pago
+        <select name="metodo" required>
+          <option>Pago móvil</option>
+          <option>Transferencia</option>
+          <option>Zelle</option>
+          <option>Efectivo</option>
+        </select>
+      </label>
+      <label>Referencia del pago <input name="referencia" required maxlength="60"></label>
+      <label>Monto pagado <input name="montoPagado" type="number" min="0.01" step="0.01"></label>
+      <label class="full">Comprobante de pago
+        <input name="comprobantes" type="file" accept="image/*,application/pdf" multiple required>
+        <span class="muted">Foto o PDF, máximo 10 MB por archivo.</span>
+      </label>
+    </div>
+    <div class="actions">
+      <button type="submit" id="enviar">Enviar compra</button>
+      <span class="muted" id="total"></span>
+    </div>
+  </form>
+
+  <section class="card" id="resultado" hidden>
+    <h2>Compra registrada</h2>
+    <p>Tu código es <strong class="mono" id="codigo"></strong>. Guárdalo.</p>
+    <p class="muted">Cuando verifiquemos tu pago te enviaremos las tablas por WhatsApp.</p>
+  </section>
+
+  <section class="card">
+    <h2>Consultar mi compra</h2>
+    <form id="form-consulta" class="row">
+      <label style="flex:1 1 200px">Código de compra <input name="codigo" required placeholder="BNG-XXXXXX"></label>
+      <button type="submit">Consultar</button>
+    </form>
+    <p class="msg" id="consulta-msg"></p>
+  </section>
+
+  <p class="msg" id="msg"></p>
+</main>
+<script>
+const $ = id => document.getElementById(id);
+const dinero = (n, moneda) => `${moneda ? moneda + ' ' : ''}${Number(n).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const ETIQUETAS = { por_verificar: 'Pago en verificación', verificada: 'Pago verificado. Te enviaremos las tablas.', enviada: 'Tablas enviadas por WhatsApp', rechazada: 'Compra rechazada. Escríbenos si tienes dudas.' };
+let evento = null;
+
+function mostrarError(el, msg) { el.textContent = msg; el.className = 'msg bad'; }
+
+async function cargar() {
+  evento = await (await fetch('/api/evento')).json();
+  $('titulo').textContent = evento.nombre || 'Compra de tablas';
+  if (!evento.abierto) {
+    $('precio').textContent = 'Las compras aún no están abiertas.';
+    return;
+  }
+  $('precio').textContent = `Precio por tabla: ${dinero(evento.precioTabla, evento.moneda)}`;
+  $('form').hidden = false;
+  actualizarTotal();
+  if (evento.cuentasPago) {
+    $('precio').insertAdjacentHTML('afterend', `<div class="note" style="white-space:pre-line">Pagos:\n${evento.cuentasPago.replace(/[<>&]/g, c => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</div>`);
+  }
+}
+
+function actualizarTotal() {
+  const n = Number($('form').cantidad.value);
+  $('total').textContent = evento?.abierto && n > 0 ? `Total: ${dinero(n * evento.precioTabla, evento.moneda)}` : '';
+}
+$('form').cantidad.addEventListener('input', actualizarTotal);
+
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const btn = $('enviar');
+  btn.disabled = true;
+  $('msg').textContent = 'Enviando…';
+  $('msg').className = 'msg';
+  try {
+    const res = await fetch('/api/compras', { method: 'POST', body: new FormData(e.target) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'No se pudo registrar la compra.');
+    $('codigo').textContent = data.codigo;
+    $('resultado').hidden = false;
+    $('msg').textContent = '';
+    e.target.reset();
+    e.target.cantidad.value = 1;
+    actualizarTotal();
+    $('resultado').scrollIntoView({ behavior: 'smooth' });
+  } catch (err) {
+    mostrarError($('msg'), err.message);
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+$('form-consulta').addEventListener('submit', async e => {
+  e.preventDefault();
+  const codigo = e.target.codigo.value.trim();
+  try {
+    const res = await fetch(`/api/compras/${encodeURIComponent(codigo)}/estado`);
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+    $('consulta-msg').className = 'msg';
+    $('consulta-msg').textContent = `${data.codigo} · ${data.cantidad} tabla(s) · ${dinero(data.total, evento?.moneda)} · ${ETIQUETAS[data.estado] || data.estado}`;
+  } catch (err) {
+    mostrarError($('consulta-msg'), err.message);
+  }
+});
+
+cargar().catch(() => mostrarError($('msg'), 'No se pudo cargar el evento. Intenta de nuevo.'));
+</script>
+</body>
+</html>
