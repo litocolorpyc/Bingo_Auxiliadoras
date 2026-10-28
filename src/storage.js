@@ -1,40 +1,56 @@
-const crypto = require('node:crypto');
-const { createClient } = require('@supabase/supabase-js');
+const { Readable } = require('node:stream');
+const { get, head } = require('@vercel/blob');
+const { handleUpload } = require('@vercel/blob/client');
 
-const EXTENSIONES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'application/pdf': 'pdf' };
-const RUTA_VALIDA = /^[a-f0-9]{32}\.(png|jpg|gif|webp|pdf)$/;
-const LECTURA_SEGUNDOS = 300;
+const TIPOS = ['image/png', 'image/jpeg', 'image/gif', 'image/webp', 'application/pdf'];
+const TAMANO_MAX = 10 * 1024 * 1024;
+const RUTA_VALIDA = /^comprobantes\/[A-Za-z0-9._-]+\.(png|jpg|gif|webp|pdf)$/;
 
-// Los comprobantes se suben directo desde el navegador con una URL firmada.
-// Así el archivo no pasa por la función de Vercel (límite de 4.5 MB por petición).
-function crearStorage({ url, serviceKey, bucket = 'comprobantes' }) {
-  const sb = createClient(url, serviceKey, { auth: { persistSession: false, autoRefreshToken: false } });
-  const b = sb.storage.from(bucket);
-
+// Comprobantes en Vercel Blob privado. El navegador sube directo con un token que emite handleUpload,
+// así el archivo no pasa por la función (límite de 4.5 MB por petición).
+function crearStorage() {
   return {
-    extensionPara: tipo => EXTENSIONES[tipo] || null,
+    tipoPermitido: tipo => TIPOS.includes(tipo),
     rutaValida: ruta => RUTA_VALIDA.test(String(ruta || '')),
 
-    async firmarSubida(tipo) {
-      const ext = EXTENSIONES[tipo];
-      if (!ext) throw new Error('Tipo de archivo no permitido.');
-      const ruta = `${crypto.randomBytes(16).toString('hex')}.${ext}`;
-      const { data, error } = await b.createSignedUploadUrl(ruta);
-      if (error) throw error;
-      return { ruta, url: data.signedUrl };
+    // body: cuerpo JSON que envía el cliente de upload; request: la petición HTTP.
+    generarToken(request, body) {
+      return handleUpload({
+        request,
+        body,
+        onBeforeGenerateToken: async pathname => {
+          if (!RUTA_VALIDA.test(pathname)) throw new Error('Ruta de comprobante no permitida.');
+          return {
+            allowedContentTypes: TIPOS,
+            maximumSizeInBytes: TAMANO_MAX,
+            addRandomSuffix: true,
+          };
+        },
+        onUploadCompleted: async () => {},
+      });
     },
 
     async existe(ruta) {
-      const { error } = await b.info(ruta);
-      return !error;
+      try {
+        await head(ruta, { access: 'private' });
+        return true;
+      } catch {
+        return false;
+      }
     },
 
-    async urlLectura(ruta) {
-      const { data, error } = await b.createSignedUrl(ruta, LECTURA_SEGUNDOS);
-      if (error) throw error;
-      return data.signedUrl;
+    // Devuelve { stream, tipo } para que la función lo entregue al panel, o null si no existe.
+    async leer(ruta) {
+      try {
+        const r = await get(ruta, { access: 'private' });
+        if (!r || r.statusCode !== 200) return null;
+        const stream = typeof r.stream.pipe === 'function' ? r.stream : Readable.fromWeb(r.stream);
+        return { stream, tipo: r.blob.contentType };
+      } catch {
+        return null;
+      }
     },
   };
 }
 
-module.exports = { crearStorage };
+module.exports = { crearStorage, TIPOS };

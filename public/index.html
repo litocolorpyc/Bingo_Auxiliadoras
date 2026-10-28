@@ -57,6 +57,15 @@
 
   <p class="msg" id="msg"></p>
 </main>
+<script type="module">
+  import { upload } from 'https://cdn.jsdelivr.net/npm/@vercel/blob@2.8.2/dist/client.js';
+  const EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp', 'application/pdf': 'pdf' };
+  window.subirComprobante = file => upload(
+    `comprobantes/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${EXT[file.type]}`,
+    file,
+    { access: 'private', handleUploadUrl: '/api/publico/comprobantes/firmar', contentType: file.type },
+  );
+</script>
 <script>
 const $ = id => document.getElementById(id);
 const dinero = (n, moneda) => `${moneda ? moneda + ' ' : ''}${Number(n).toLocaleString('es', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -96,19 +105,13 @@ $('form').addEventListener('submit', async e => {
     const f = e.target;
     const archivos = [...f.comprobantes.files];
     if (!archivos.length) throw new Error('Adjunta el comprobante de pago.');
-    // Los comprobantes van directo a Supabase con una URL firmada; la compra solo guarda sus rutas.
+    // Los comprobantes van directo a Vercel Blob con un token del servidor; la compra solo guarda sus rutas.
     const comprobantes = [];
     for (const [i, file] of archivos.entries()) {
       if (file.size > 10 * 1024 * 1024) throw new Error(`"${file.name}" supera 10 MB.`);
       $('msg').textContent = `Subiendo comprobante ${i + 1} de ${archivos.length}…`;
-      const firma = await fetch('/api/publico/comprobantes/firmar', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: file.type }),
-      });
-      const datosFirma = await firma.json();
-      if (!firma.ok) throw new Error(datosFirma.error || 'No se pudo preparar la subida.');
-      const put = await fetch(datosFirma.url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
-      if (!put.ok) throw new Error(`No se pudo subir "${file.name}". Intenta de nuevo.`);
-      comprobantes.push({ ruta: datosFirma.ruta, nombre: file.name, tipo: file.type });
+      const blob = await window.subirComprobante(file);
+      comprobantes.push({ ruta: blob.pathname, nombre: file.name, tipo: file.type });
     }
     const cuerpo = Object.fromEntries([...new FormData(f)].filter(([k]) => k !== 'comprobantes'));
     cuerpo.comprobantes = comprobantes;

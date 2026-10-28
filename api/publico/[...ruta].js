@@ -18,12 +18,9 @@ module.exports = async (req, res) => {
         },
       },
       {
-        // Devuelve una URL firmada para subir el archivo con PUT desde el navegador.
+        // Emite el token para que el navegador suba el comprobante directo a Vercel Blob.
         metodo: 'POST', patron: /^\/comprobantes\/firmar$/,
-        handler: async (_p, req, res) => {
-          if (!storage.extensionPara(req.body?.tipo)) throw new ErrorApp('Solo se admiten imágenes o PDF como comprobante.');
-          res.status(200).json(await storage.firmarSubida(req.body.tipo));
-        },
+        handler: async (_p, req, res) => res.status(200).json(await storage.generarToken(req, req.body)),
       },
       {
         metodo: 'POST', patron: /^\/compras$/,
@@ -34,7 +31,7 @@ module.exports = async (req, res) => {
             if (!storage.rutaValida(c.ruta) || !(await storage.existe(c.ruta))) {
               throw new ErrorApp('Uno de los comprobantes no se subió correctamente. Vuelve a intentarlo.');
             }
-            if (!storage.extensionPara(c.tipo)) throw new ErrorApp('Tipo de comprobante no permitido.');
+            if (!storage.tipoPermitido(c.tipo)) throw new ErrorApp('Tipo de comprobante no permitido.');
           }
           const r = await servicios.crearCompra(cuerpo, comprobantes);
           res.status(201).json(r);

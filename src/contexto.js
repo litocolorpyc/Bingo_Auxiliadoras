@@ -16,11 +16,7 @@ function obtenerContexto(env = process.env) {
     plantilla: env.WHATSAPP_PLANTILLA,
     codigoPais: env.CODIGO_PAIS || '58',
   });
-  const storage = crearStorage({
-    url: env.SUPABASE_URL,
-    serviceKey: env.SUPABASE_SERVICE_ROLE_KEY,
-    bucket: env.SUPABASE_BUCKET || 'comprobantes',
-  });
+  const storage = crearStorage();
   const servicios = crearServicios({ db, whatsapp });
   ctx = { db, whatsapp, storage, servicios, env };
   return ctx;

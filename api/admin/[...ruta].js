@@ -58,10 +58,15 @@ module.exports = async (req, res) => {
       { metodo: 'POST', patron: /^\/pagos\/(\d+)\/rechazar$/, handler: admin(async (p, req, res) => res.json(await servicios.rechazarPago(id(p)))) },
 
       {
-        metodo: 'GET', patron: /^\/comprobantes\/(\d+)\/url$/,
+        // Entrega el archivo privado al panel (la cookie de sesión autoriza la descarga).
+        metodo: 'GET', patron: /^\/comprobantes\/(\d+)\/archivo$/,
         handler: admin(async (p, req, res) => {
           const c = await servicios.comprobanteDe(id(p));
-          res.json({ url: await storage.urlLectura(c.ruta), nombre: c.nombre });
+          const archivo = await storage.leer(c.ruta);
+          if (!archivo) throw new ErrorApp('El archivo ya no está disponible.', 404);
+          res.setHeader('Content-Type', archivo.tipo || c.tipo);
+          res.setHeader('Content-Disposition', 'inline');
+          archivo.stream.pipe(res);
         }),
       },
 

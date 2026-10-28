@@ -221,8 +221,7 @@ $('vista').addEventListener('click', async e => {
   btn.disabled = true;
   try {
     if (act === 'ver-comprobante') {
-      const { url } = await api('GET', `/admin/comprobantes/${id}/url`);
-      window.open(url, '_blank', 'noopener');
+      window.open(`/api/admin/comprobantes/${id}/archivo`, '_blank', 'noopener');
       return;
     }
     if (act === 'enviar') {
