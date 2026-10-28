@@ -8,7 +8,7 @@ types.setTypeParser(1700, v => Number(v));
 // fn dentro de tx recibe un ejecutor que usa la misma transacción.
 
 function desdePool(connectionString) {
-  // Supabase exige SSL. El pooler de transacciones (puerto 6543) funciona sin prepared statements con nombre.
+  // Neon y otros Postgres administrados exigen SSL.
   const pool = new Pool({ connectionString, max: 5, ssl: { rejectUnauthorized: false } });
   return {
     query: async (sql, params = []) => (await pool.query(sql, params)).rows,

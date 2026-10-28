@@ -18,7 +18,7 @@ async function nuevo({ whatsapp } = {}) {
   return s;
 }
 
-const ruta = () => `${'a'.repeat(31)}${Math.random().toString(16).slice(2, 3)}.png`;
+const ruta = () => `comprobantes/${require('node:crypto').randomBytes(16).toString('hex')}.png`;
 const comprobante = () => [{ ruta: ruta(), nombre: 'pago.png', tipo: 'image/png' }];
 
 const datos = (n, extra = {}) => ({

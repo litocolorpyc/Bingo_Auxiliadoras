@@ -1,4 +1,4 @@
-// Crea las tablas en Supabase. Se ejecuta una vez (y cada vez que cambie src/esquema.sql).
+// Crea las tablas en la base de datos (Neon). Se ejecuta una vez (y cada vez que cambie src/esquema.sql).
 // Uso: npm run migrar   (requiere DATABASE_URL)
 const fs = require('node:fs');
 const path = require('node:path');
