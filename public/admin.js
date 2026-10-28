@@ -230,6 +230,7 @@ $('vista').addEventListener('click', async e => {
       } else {
         msg('Tablas enviadas por WhatsApp.');
       }
+      filtroCompras = 'enviada';
       return mostrar('compras');
     }
     if (act === 'reenviar') {
@@ -257,6 +258,7 @@ $('vista').addEventListener('click', async e => {
       const monto = Number(document.querySelector(`[data-monto="${id}"]`).value);
       await api('POST', `/admin/pagos/${id}/verificar`, { montoVerificado: monto });
       msg('Pago verificado. Ya puedes usar "Enviar Tablas".');
+      filtroCompras = 'verificada';
       return mostrar('compras');
     }
     if (act === 'rechazar-pago') {
