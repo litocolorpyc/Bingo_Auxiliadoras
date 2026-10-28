@@ -66,7 +66,7 @@ let evento = null;
 function mostrarError(el, msg) { el.textContent = msg; el.className = 'msg bad'; }
 
 async function cargar() {
-  evento = await (await fetch('/api/evento')).json();
+  evento = await (await fetch('/api/publico/evento')).json();
   $('titulo').textContent = evento.nombre || 'Compra de tablas';
   if (!evento.abierto) {
     $('precio').textContent = 'Las compras aún no están abiertas.';
@@ -93,7 +93,29 @@ $('form').addEventListener('submit', async e => {
   $('msg').textContent = 'Enviando…';
   $('msg').className = 'msg';
   try {
-    const res = await fetch('/api/compras', { method: 'POST', body: new FormData(e.target) });
+    const f = e.target;
+    const archivos = [...f.comprobantes.files];
+    if (!archivos.length) throw new Error('Adjunta el comprobante de pago.');
+    // Los comprobantes van directo a Supabase con una URL firmada; la compra solo guarda sus rutas.
+    const comprobantes = [];
+    for (const [i, file] of archivos.entries()) {
+      if (file.size > 10 * 1024 * 1024) throw new Error(`"${file.name}" supera 10 MB.`);
+      $('msg').textContent = `Subiendo comprobante ${i + 1} de ${archivos.length}…`;
+      const firma = await fetch('/api/publico/comprobantes/firmar', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tipo: file.type }),
+      });
+      const datosFirma = await firma.json();
+      if (!firma.ok) throw new Error(datosFirma.error || 'No se pudo preparar la subida.');
+      const put = await fetch(datosFirma.url, { method: 'PUT', headers: { 'Content-Type': file.type }, body: file });
+      if (!put.ok) throw new Error(`No se pudo subir "${file.name}". Intenta de nuevo.`);
+      comprobantes.push({ ruta: datosFirma.ruta, nombre: file.name, tipo: file.type });
+    }
+    const cuerpo = Object.fromEntries([...new FormData(f)].filter(([k]) => k !== 'comprobantes'));
+    cuerpo.comprobantes = comprobantes;
+    $('msg').textContent = 'Registrando compra…';
+    const res = await fetch('/api/publico/compras', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(cuerpo),
+    });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'No se pudo registrar la compra.');
     $('codigo').textContent = data.codigo;
@@ -114,7 +136,7 @@ $('form-consulta').addEventListener('submit', async e => {
   e.preventDefault();
   const codigo = e.target.codigo.value.trim();
   try {
-    const res = await fetch(`/api/compras/${encodeURIComponent(codigo)}/estado`);
+    const res = await fetch(`/api/publico/compras/${encodeURIComponent(codigo)}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
     $('consulta-msg').className = 'msg';

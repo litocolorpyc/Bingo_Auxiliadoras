@@ -188,7 +188,7 @@ async function cargarPagos(card) {
         <span class="pill ${esc(p.estado)}">${esc(p.estado.replace('_', ' '))}</span>
       </div>
       <span class="muted">Reportado ${dinero(p.montoReportado)}${p.montoVerificado != null ? ` · Verificado ${dinero(p.montoVerificado)}` : ''}</span>
-      ${p.tieneComprobante ? `<a class="btn ghost" href="/api/admin/pagos/${p.id}/comprobante" target="_blank" rel="noopener">Ver comprobante</a>` : ''}
+      ${p.comprobantes.map(c => `<button type="button" class="ghost" data-act="ver-comprobante" data-id="${c.id}">Ver ${esc(c.nombre)}</button>`).join('')}
       ${p.estado === 'por_verificar' ? `
         <div class="row" style="width:100%;margin-top:6px">
           <label style="flex:1 1 160px">Monto recibido <input type="number" min="0.01" step="0.01" value="${p.montoReportado}" data-monto="${p.id}"></label>
@@ -220,6 +220,11 @@ $('vista').addEventListener('click', async e => {
   const act = btn.dataset.act;
   btn.disabled = true;
   try {
+    if (act === 'ver-comprobante') {
+      const { url } = await api('GET', `/admin/comprobantes/${id}/url`);
+      window.open(url, '_blank', 'noopener');
+      return;
+    }
     if (act === 'enviar') {
       if (!confirm('¿Asignar tablas y enviarlas por WhatsApp?')) return;
       const r = await api('POST', `/admin/compras/${id}/enviar`);

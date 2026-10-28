@@ -1,56 +1,96 @@
 # Bingo Auxiliadoras
 
-Aplicativo para vender, verificar y controlar tablas de bingo: desde que la persona llena el formulario y sube su comprobante, hasta el envío de tablas por WhatsApp y el control de pagos, deudas, premios y gastos.
+Venta, verificación y control de tablas de bingo. Frontend estático y funciones serverless en **Vercel**; base de datos y comprobantes en **Supabase**.
+
+## Arquitectura
+
+| Parte | Dónde corre | Archivo |
+|---|---|---|
+| Formulario de compra y panel | Vercel (estático) | `public/` |
+| API pública (evento, compra, estado) | Vercel Function | `api/publico/[...ruta].js` |
+| API de administración (con sesión) | Vercel Function | `api/admin/[...ruta].js` |
+| Base de datos PostgreSQL | Supabase | `src/esquema.sql` |
+| Comprobantes | Supabase Storage (privado) | bucket `comprobantes` |
+
+Los comprobantes se suben directo desde el navegador a Supabase con una URL firmada, así no pasan por Vercel (que limita las peticiones a 4.5 MB).
 
 ## Flujo
 
-1. **Compra.** La persona llena `/` con sus datos, el método y la referencia del pago, y sube el comprobante. Recibe un código de compra (`BNG-XXXXXX`).
-2. **Verificación de pago.** En `/admin.html`, el administrador revisa el comprobante, confirma el monto recibido y lo verifica (o rechaza el pago). Los abonos parciales quedan registrados; el saldo queda como deuda.
-3. **Enviar Tablas.** Con un pago verificado, el botón asigna tablas libres y las marca como vendidas en la misma transacción, así una tabla nunca se vende dos veces. Luego envía el mensaje por WhatsApp.
-4. **Control.** Cada tabla queda ligada a su compra. Se ve quién tiene cuál, cuánto ha depositado, qué debe y qué se entregó.
-5. **Premios, gastos y reportes.** Se registra la tabla ganadora (solo tablas vendidas), el pago del premio y los gastos. Los reportes salen en CSV para Excel.
+1. **Compra:** la persona llena el formulario, sube el comprobante y recibe un código `BNG-XXXXXX`.
+2. **Verificación:** el administrador confirma el monto recibido. Los abonos quedan registrados y el saldo queda como deuda.
+3. **Enviar Tablas:** asigna tablas libres en una sola operación atómica (`FOR UPDATE SKIP LOCKED`) y envía el mensaje por WhatsApp.
+4. **Control:** tablas, pagos, deudas, premios, gastos, reportes CSV y bitácora.
 
-Cada acción importante queda en la bitácora.
+## 1. Supabase
 
-## Instalación
+1. Crea el proyecto `bingo-auxiliadoras` en región `South America (São Paulo)`. Guarda la contraseña de la base.
+2. **Project Settings → Database → Connection string → Transaction pooler** (puerto 6543). Esa es tu `DATABASE_URL`.
+3. **Project Settings → API:** copia la **Project URL** y la **service_role key**.
+4. **Storage → New bucket:** nombre `comprobantes`, **Public desactivado**. En la configuración del bucket, limita el tamaño a **10 MB** y los tipos a `image/png, image/jpeg, image/gif, image/webp, application/pdf`.
 
-Requiere Node.js 22.13 o superior.
+## 2. Preparar el proyecto en tu computadora (PowerShell)
 
-```bash
+```powershell
+git clone https://github.com/litocolorpyc/Bingo_Auxiliadoras.git
+cd Bingo_Auxiliadoras
 npm install
-cp .env.example .env   # y completa ADMIN_PASSWORD
-ADMIN_PASSWORD=tu-clave npm start
 ```
 
-Abre `http://localhost:3000` (compra) y `http://localhost:3000/admin.html` (administración).
+Crea las tablas en Supabase (solo una vez):
 
-## Cargar tus 400 tablas
-
-Pon los seriales en un archivo de texto (uno por línea o separados por coma) y ejecuta:
-
-```bash
-npm run importar-tablas -- ruta/al/archivo.txt
+```powershell
+$env:DATABASE_URL = "postgresql://postgres.xxxx:TU-CONTRASEÑA@aws-0-sa-east-1.pooler.supabase.com:6543/postgres"
+npm run migrar
 ```
 
-Los seriales repetidos se ignoran. También puedes pegarlos en el panel, en la sección **Tablas**.
+Carga tus 400 tablas desde un archivo de texto (un serial por línea):
 
-## WhatsApp
+```powershell
+npm run importar-tablas -- .\tablas.txt
+```
 
-- **Sin configurar:** al pulsar "Enviar Tablas" las tablas quedan asignadas y el panel ofrece "Abrir WhatsApp manual". Con ese enlace se abre el chat con el mensaje listo; luego se usa "Marcar como enviado".
-- **Con WhatsApp Cloud API (Meta):** define `WHATSAPP_TOKEN` y `WHATSAPP_PHONE_ID`. Para escribir a compradores fuera de la ventana de 24 h, Meta exige una plantilla aprobada: crea una con dos variables (nombre y seriales) y ponla en `WHATSAPP_PLANTILLA`.
-- Si el envío automático falla, la compra queda marcada como "fallido" con el error y se puede reintentar sin asignar otras tablas.
+## 3. Vercel
+
+Opción recomendada: desde la web.
+
+1. En [vercel.com](https://vercel.com), inicia sesión con **litocolorpyc@gmail.com** y pulsa **Add New → Project**.
+2. Importa el repositorio `Bingo_Auxiliadoras`. Vercel detecta la configuración de `vercel.json`.
+3. En **Environment Variables**, agrega las del archivo `.env.example`:
+   - `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` (`comprobantes`)
+   - `ADMIN_PASSWORD` (una clave larga)
+   - `CODIGO_PAIS` (`58`) y, cuando tengas WhatsApp, `WHATSAPP_TOKEN`, `WHATSAPP_PHONE_ID`, `WHATSAPP_PLANTILLA`
+4. Pulsa **Deploy**. Cada `git push` a `main` redespliega la app.
+
+Opción desde PowerShell:
+
+```powershell
+npm install -g vercel
+vercel login
+vercel link
+vercel env add DATABASE_URL production
+vercel env add SUPABASE_URL production
+vercel env add SUPABASE_SERVICE_ROLE_KEY production
+vercel env add SUPABASE_BUCKET production
+vercel env add ADMIN_PASSWORD production
+vercel env add CODIGO_PAIS production
+vercel --prod
+```
+
+Cada `vercel env add` pide el valor por teclado.
+
+**Nota sobre el plan:** el plan gratuito de Vercel (Hobby) es para uso no comercial. Una venta de tablas se considera comercial, así que conviene el plan **Pro**.
 
 ## Pruebas
 
-```bash
+```powershell
 npm test
 ```
 
-Cubren las reglas críticas: no vender la misma tabla dos veces, no vender más de lo disponible, saldos con pagos parciales, premios solo con tablas vendidas y reintento de WhatsApp.
+Cubren las reglas críticas contra PostgreSQL: no vender la misma tabla dos veces, envíos simultáneos sin repetidos, saldos con pagos parciales, premios solo con tablas vendidas y reintento de WhatsApp.
 
-## Notas de seguridad y operación
+## Notas de operación
 
-- El panel usa una sola contraseña (`ADMIN_PASSWORD`). Usa una clave larga y bloquea el acceso público al servidor en producción (HTTPS).
-- Tras 10 intentos fallidos desde una misma IP, el login se bloquea 15 minutos.
-- Los datos viven en `data/bingo.db` (SQLite) y los comprobantes en `data/comprobantes/`. Haz respaldo de `data/` durante el evento.
-- Los comprobantes solo se ven desde el panel de administración.
+- Los comprobantes son privados. El panel genera un enlace temporal (5 minutos) cada vez que lo abres.
+- Si alguien sube un comprobante y no termina la compra, el archivo queda huérfano en Storage. Es inofensivo, y se puede borrar después.
+- El login bloquea una IP tras 10 intentos fallidos en 15 minutos.
+- Respalda la base desde Supabase (**Database → Backups**) durante el evento.
