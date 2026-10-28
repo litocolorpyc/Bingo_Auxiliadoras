@@ -7,8 +7,8 @@
     "node": ">=20"
   },
   "scripts": {
-    "migrar": "node scripts/migrar.js",
-    "importar-tablas": "node scripts/importar-tablas.js",
+    "migrar": "node --env-file-if-exists=.env scripts/migrar.js",
+    "importar-tablas": "node --env-file-if-exists=.env scripts/importar-tablas.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
